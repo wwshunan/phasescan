@@ -291,100 +291,25 @@ class CanvasPanel(wx.Panel):
         self.autoscale()
 
     def autoscale(self):
-        self.axes.relim()
-        self.axes.autoscale_view()
+        xdata = self.scan_line.get_xdata()
+        ydata = self.scan_line.get_ydata()
+        if len(xdata) > 1:
+            x_min = min(xdata)
+            x_max = max(xdata)
+            y_min = min(ydata)
+            y_max = max(ydata)
+            x_width = x_max - x_min
+            y_width = y_max - y_min
+            x_min = x_min - 0.1 * x_width
+            x_max = x_max + 0.1 * x_width
+            y_min = y_min - 0.1 * y_width
+            y_max = y_max + 0.1 * y_width
+            self.axes.set_xlim(x_min, x_max)
+            self.axes.set_ylim(y_min, y_max)
+        else:
+            self.axes.relim()
+            self.axes.autoscale_view()
         self.canvas.draw()
-
-
-        
-
-
-            
-    '''
-    def on_pick(self, event, line):
-
-        if event.artist != line:
-            return True
-
-        N = len(event.ind)
-
-        if not N:
-            return True
-
-        xs = line.get_xdata()
-        ys = line.get_ydata()
-
-        # the click locations
-        x = event.mouseevent.xdata
-        y = event.mouseevent.ydata
-
-        distances = np.hypot(x - xs[event.ind], y - ys[event.ind])
-
-        indmin = distances.argmin()
-
-        dataind = event.ind[indmin]
-
-        self.lastind = dataind
-        self.update(xs, ys)
-
-    def update(self, xs, ys):
-        if self.lastind is None:
-            return
-
-        dataind = self.lastind
-
-        #ax2.cla()
-        #ax2.plot(X[dataind])
-
-        #ax2.text(0.05, 0.9, 'mu=%1.3f\nsigma=%1.3f' % (xs[dataind], ys[dataind]),
-        #         transform=ax2.transAxes, va='top')
-        #ax2.set_ylim(-0.5, 1.5)
-        self.selected.set_visible(True)
-        self.selected.set_data(xs[dataind], ys[dataind])
-
-        self.canvas.draw()
-    '''
-
-'''
-    def on_press(self, event):
-        self.clicked = True
-        self.x_pos = event.xdata
-        self.y_pos = event.ydata
-
-    def on_release(self, event):
-        self.clicked = False
-        if self.patch:
-            self.patch.remove()
-            self.patch = None
-        self.canvas.draw()
-
-    def drawRectangle(self, event):
-        if self.clicked:
-            x = event.xdata
-            y = event.ydata
-
-            verts = [
-                (self.x_pos, y), 
-                (self.x_pos, self.y_pos), 
-                (x, self.y_pos), 
-                (x, y),
-                (self.x_pos, y),
-                ]
-
-            codes = [Path.MOVETO,
-                     Path.LINETO,
-                     Path.LINETO,
-                     Path.LINETO,
-                     Path.CLOSEPOLY,
-                     ]
-
-            path = Path(verts, codes)
-            if self.patch:
-                self.patch.remove()
-            self.patch = patches.PathPatch(path, alpha=0.1)
-            self.axes.add_patch(self.patch)
-            self.canvas.draw()
-    '''
 
 class DisplayFrame(wx.Frame):
     def __init__(self):
