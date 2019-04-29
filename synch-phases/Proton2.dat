@@ -1,0 +1,503 @@
+;verification @ 12/6/2018
+;verification @ 11/26/2018
+;verification @ 7/13/2018
+;FREQ 162.5  0.166384
+DRIFT 161.65  17 0
+
+;superpose_map 0 0.24 0.32 0.01 -0.13 0.04
+superpose_map 0 0 0 0 0 0
+;ERROR_QUAD_NCPL_STAT 1 0 0.24 0.32 -0.13 0.04
+;MATCH_FAM_GRAD 6 0
+FIELD_MAP 90 300 0 25 57.9 0 0 0 quad1
+;superpose_map 188.48 0.3 0.36 0 -0.35 0.31
+superpose_map 188.48 0 0 0 0 0
+;ERROR_QUAD_NCPL_STAT 1 0 0.3 0.36 -0.35 0.31
+MATCH_FAM_GRAD 6 0
+FIELD_MAP 90 300 0 25 -84.0008 0 0 0 quad2
+superpose_map 375.9 0 0 0 0 0
+;superpose_map 375.9 0.12 0.44 0 0.05 -0.04
+;ERROR_QUAD_NCPL_STAT 1 0 0.12 0.44 0.05 -0.04
+MATCH_FAM_GRAD 6 0
+FIELD_MAP 90 300 0 25 90.4985 0 0 0 quad1
+superpose_map 625.9 0 0 0 0 0
+MATCH_FAM_FIELD 6 0
+SET_SYNC_PHASE 
+FIELD_MAP 7700 240 -90 20 0.114 0.114 0 0 buncher
+DRIFT 77 25 0
+
+;MATCH_FAM_GRAD 6 0
+QUAD 80 0 25 0 0 0 0 0 0
+
+DRIFT 122.5 25 0
+
+;slit
+DRIFT 1e-006 25 0
+
+DRIFT 373.5 25 0;;;;;;;;;;;;;;;cali from outside devitation about 8mm, so cut 2mm inside 
+
+;wire
+DRIFT 1e-006 25 0
+
+DRIFT 3 25 0;;based on measurement changes from 69.5 to 3
+
+superpose_map 0 0 0 0 0 0
+MATCH_FAM_GRAD 6 0
+FIELD_MAP 90 300 0 25 -64.8286 0 0 0 quad1
+superpose_map 168.29 0 0 0 0 0
+;MATCH_FAM_GRAD 6 0
+FIELD_MAP 90 300 0 25 101.63 0 0 0 quad1
+superpose_map 350.72 0 0 0 0 0
+MATCH_FAM_GRAD 6 0
+FIELD_MAP 90 300 0 25 -44.8019  0 0 0 quad1
+superpose_map 608.72 0 0 0 0 0
+;MATCH_FAM_FIELD 6 0
+SET_SYNC_PHASE 
+FIELD_MAP 7700 240 -90 20 0.1643 0.1643 0 0 buncher
+
+DRIFT 295 25 0
+
+;set_twiss 6 -0.4256 0.30843 -0.4248 0.303436 0.55741 0.45452 0 0 0 0 0 0
+DRIFT 1e-006 25 0
+
+;
+;;;;;verification@ 2018.11.26
+;;;;;;$$$$$$$$$$$$$$$$$$$$$$2CM HWR010 + 2CMspoke021_IMP$$$$$$$$$$$$$$$...... 
+;
+;DRIFT 0.805 100  ;;;;;calibration results@ 2018.9.27
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;CM1 section ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+FREQ 162.5
+;.............CM outwall...............zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...
+lattice 3 1
+
+;.................cryomodule 1.................
+;CELL 1
+DRIFT 85.05 20 0 0 0
+superpose_map 0 0 0 0 0 0
+FIELD_MAP 70 350 0 20 0.576896 1 0 0 sol_yuan
+superpose_map 345.28 0 0 0 0 0
+SET_SYNC_PHASE 
+FIELD_MAP 7700 210 -38 20 -1.2 1.2 0 0 hwr010
+
+;CELL 2 
+DRIFT 85.13 20 0 0 0
+superpose_map 0 0 0 0 0 0
+FIELD_MAP 70 350 0 20 0.576823 1 0 0 sol_yuan
+superpose_map 345.1 0 0 0 0 0
+SET_SYNC_PHASE 
+FIELD_MAP 7700 210 -35 20 -1.42 1.42 0 0 hwr010
+
+;CELL 3
+DRIFT 84.73 20 0 0 0
+superpose_map 0 0 0 0 0 0
+FIELD_MAP 70 350 0 20 0.576515 1 0 0 sol_yuan
+superpose_map 345.17 0 0 0 0 0
+SET_SYNC_PHASE 
+FIELD_MAP 7700 210 -32 20 -1.68 1.68 0 0 hwr010
+
+
+;CELL 4 
+DRIFT 84.67 20 0 0 0
+superpose_map 0 0 0 0 0 0
+FIELD_MAP 70 350 0 20 0.5660335 1 0 0 sol_yuan
+superpose_map 344.89 0 0 0 0 0
+SET_SYNC_PHASE 
+FIELD_MAP 7700 210 -31 20 -1.48 1.48 0 0 hwr010
+
+
+;CELL 5
+DRIFT 85.08 20 0 0 0
+;match_fam_grad 1 0
+superpose_map 0 0 0 0 0 0
+FIELD_MAP 70 350 0 20 0.484 1 0 0 sol_yuan
+superpose_map 344.74 0 0 0 0 0
+SET_SYNC_PHASE 
+;match_fam_phase 1 0
+FIELD_MAP 7700 210 -22 20 -1.28 1.28 0 0 hwr010
+
+;CELL 6
+DRIFT 85.16 20 0 0 0
+;match_fam_grad 1 0
+superpose_map 0 0 0 0 0 0
+FIELD_MAP 70 350 0 20 0.60486 1 0 0 sol_yuan
+superpose_map 345.5 0 0 0 0 0
+SET_SYNC_PHASE 
+;match_fam_phase 1 0
+FIELD_MAP 7700 210 -34 20 -1.52 1.52 0 0 hwr010
+
+
+lattice_end
+
+DRIFT 49.851 20 0 0 0  ;;;calibration results@ 2018.9.27
+DRIFT 49.851 20 0 0 0
+DRIFT 49.851 20 0 0 0
+DRIFT 49.851 20 0 0 0
+DRIFT 49.851 20 0 0 0
+DRIFT 49.851 20 0 0 0
+DRIFT 49.851 20 0 0 0
+DRIFT 49.851 20 0 0 0
+DRIFT 49.851 20 0 0 0
+DRIFT 49.851 20 0 0 0
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;CM1 section end;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;CM2 section;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+DRIFT 0.06 100  ;;;;;calibration results@ 2018.9.27
+FREQ 162.5
+lattice 3 1
+
+
+;.................CM2........................
+;CELL 1.........1.105m
+DRIFT 84.76 20 0 0 0
+;match_fam_grad 1 0
+superpose_map 0 0 0 0 0 0
+FIELD_MAP 70 350 0 20 0.53746 1 0 0 sol
+superpose_map 346.88 0 0 0 0 0
+SET_SYNC_PHASE 
+;match_fam_phase 1 0
+FIELD_MAP 7700 210 -28 20 -2.0 2.0 0 0 hwr010
+
+;CELL 2 
+DRIFT 82.77 20 0 0 0
+;match_fam_grad 1 0
+superpose_map 0 0 0 0 0 0
+FIELD_MAP 70 350 0 20 0.4050631 1 0 0 sol
+superpose_map 340.315 0 0 0 0 0
+SET_SYNC_PHASE 
+;match_fam_phase 1 0
+FIELD_MAP 7700 210 -20 20 -1.6 1.6 0 0 hwr010
+
+;CELL 3
+DRIFT 80.2 20 0 0 0
+superpose_map 0 0 0 0 0 0
+FIELD_MAP 70 350 0 20 0.450062 1 0 0 sol_yuan
+SET_SYNC_PHASE 
+superpose_map 344.49 0 0 0 0 0
+FIELD_MAP 7700 210 -30 20 -1.28 1.28 0 0 hwr010
+
+;CELL 4
+DRIFT 88.33 20 0 0 0
+superpose_map 0 0 0 0 0 0
+FIELD_MAP 70 350 0 20 0.478994 1 0 0 sol_yuan
+superpose_map 342.34 0 0 0 0 0
+SET_SYNC_PHASE 
+FIELD_MAP 7700 210 -26 20 -2.32 2.32 0 0 hwr010
+
+;CELL 5 
+DRIFT 94.43 20 0 0 0
+superpose_map 0 0 0 0 0 0
+;match_fam_grad 1 0 
+FIELD_MAP 70 350 0 20 0.439851 1 0 0 sol
+superpose_map 346.45 0 0 0 0 0
+SET_SYNC_PHASE
+;match_fam_phase 1 0 
+FIELD_MAP 7700 210 -20 20 -2 2 0 0 hwr010
+
+;CELL 6 
+DRIFT 94.8 20 0 0 0
+superpose_map 0 0 0 0 0 0
+;match_fam_grad 1 0 
+FIELD_MAP 70 350 0 20 0.550338 1 0 0 sol
+superpose_map 346.345 0 0 0 0 0
+SET_SYNC_PHASE 
+;match_fam_phase 1 0 
+FIELD_MAP 7700 210 -48 20 -1.6 1.6 0.  0 hwr010
+
+lattice_end
+
+DRIFT 54.25 20 0 0 0
+DRIFT 54.25 20 0 0 0
+DRIFT 54.25 20 0 0 0
+DRIFT 54.25 20 0 0 0
+DRIFT 54.25 20 0 0 0
+DRIFT 54.25 20 0 0 0
+DRIFT 54.25 20 0 0 0
+DRIFT 54.25 20 0 0 0
+DRIFT 54.25 20 0 0 0
+DRIFT 54.25 20 0 0 0
+
+
+DRIFT 0.06 100  ;;;;;calibration results@ 2018.9.27
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;CM2 section end;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;CM3 section;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+FREQ 162.5
+;lattice 5 1
+
+;.................CM3........................
+;CELL 1.........1.105m
+DRIFT 43.47 20 0 0 0
+;match_fam_grad 1 0
+FIELD_MAP 70 350 0 20 0.561252 1 0 0 sol_yuan
+DRIFT 20 20 0 0 0
+SET_SYNC_PHASE 
+;match_fam_phase 1 0
+FIELD_MAP 7700 330 -22 20 -2.625 2.625 0 0 hwr015
+DRIFT 42.5 20 0 0 0
+
+;CELL 2 
+DRIFT 42.5 20 0 0 0
+FIELD_MAP 70 350 0 20 0.550896 1 0 0 sol
+DRIFT 20 20 0 0 0
+SET_SYNC_PHASE 
+FIELD_MAP 7700 330 -20 20 -2.7 2.7 0 0 hwr015
+DRIFT 42.5 20 0 0 0
+
+;CELL 3
+DRIFT 42.5 20 0 0 0
+FIELD_MAP 70 350 0 20 0.4958 1 0 0 sol
+DRIFT 20 20 0 0 0
+SET_SYNC_PHASE 
+;FIELD_MAP 7700 330 -10 20 -2.73 2.73 0 0 hwr015
+FIELD_MAP 7700 330 -18 20 -2.53 2.53 0 0 hwr015
+DRIFT 42.5 20 0 0 0
+
+;CELL 4
+DRIFT 42.5 20 0 0 0
+;match_fam_grad 1 0
+FIELD_MAP 70 350 0 20 0 0 0 0 sol
+DRIFT 20 20 0 0 0
+SET_SYNC_PHASE 
+;match_fam_phase 1 0
+;FIELD_MAP 7700 330 -13 20 -3.0 3.0 0 0 hwr015
+FIELD_MAP 7700 330 -18 20 -2.8 2.8 0 0 hwr015
+DRIFT 42.5 20 0 0 0
+
+ 
+;CELL 5 
+DRIFT 42.5 20 0 0 0
+;match_fam_grad 1 0
+FIELD_MAP 70 350 0 20 0.785907 1 0 0 sol_yuan
+DRIFT 20 20 0 0 0
+SET_SYNC_PHASE
+;match_fam_phase 1 0
+FIELD_MAP 7700 330 -29 20 -2.84 2.84 0 0 hwr015
+DRIFT 42.5 20 0 0 0
+lattice_end
+
+
+DRIFT 45.9 20 0 0 0;esure 600mm space in between. 459+141=600
+DRIFT 45.9 20 0 0 0
+DRIFT 45.9 20 0 0 0
+DRIFT 45.9 20 0 0 0
+DRIFT 45.9 20 0 0 0
+DRIFT 45.9 20 0 0 0
+DRIFT 45.9 20 0 0 0
+DRIFT 45.9 20 0 0 0
+DRIFT 45.9 20 0 0 0
+DRIFT 45.9 20 0 0 0
+DRIFT 80 20 0 0 0
+DRIFT 20.4 20 0 0 0; Plus 195-141=54
+;DRIFT 31.5 20 0 0 0; physics plus 31.5 to equal the machanic size
+DRIFT 30.86 20 0 0 0; verification @ 2018.11.26
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;CM3 section end;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;CM4 section;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 
+FREQ 325 
+;LATTICE 6 1
+
+;.........................spoke021 section.............................
+DRIFT 45 20 0 0 0
+DRIFT 31 20 0 0 0
+;match_fam_grad 1 0
+FIELD_MAP 50 300 0 20 0.7132 1 0 0 pql20131112216;
+DRIFT 31 20 0 0 0
+set_sync_phase 
+;match_fam_phase 1 0
+FIELD_MAP 7700 250 -20 20 -1.1 1.1 0 0 cav021r
+DRIFT 31 20 0 0 0
+
+;.........................2.............................
+DRIFT 45 20 0 0 0
+DRIFT 31 20 0 0 0
+FIELD_MAP 50 300 0 20 0.6605393 1 0 0 pql20131112216
+DRIFT 31 20 0 0 0
+set_sync_phase  
+FIELD_MAP 7700 250 -18 20 -1.14 1.14 0 0 cav021r
+DRIFT 31 20 0 0 0
+
+
+;........................3.............................
+DRIFT 45 20 0 0 0
+DRIFT 31 20 0 0 0
+FIELD_MAP 50 300 0 20 0.719943 1 0 0 pql20131112216
+DRIFT 31 20 0 0 0
+set_sync_phase 
+FIELD_MAP 7700 250 -20 20 -0.924 0.924 0 0 cav021r
+DRIFT 31 20 0 0 0
+
+;........................4.............................
+DRIFT 45 20 0 0 0
+DRIFT 31 20 0 0 0
+FIELD_MAP 50 300 0 20 0.7502 1 0 0 pql20131112216
+DRIFT 31 20 0 0 0
+set_sync_phase 
+FIELD_MAP 7700 250 -20 20 -0.88 0.88 0 0 cav021r
+DRIFT 31 20 0 0 0
+
+;.........................5.............................
+DRIFT 45 20 0 0 0
+DRIFT 31 20 0 0 0
+FIELD_MAP 50 300 0 20 0.75802 1 0 0 pql20131112216
+DRIFT 31 20 0 0 0
+set_sync_phase
+FIELD_MAP 7700 250 -20 20 -1.18 1.18 0 0 cav021r
+DRIFT 31 20 0 0 0
+
+;.........................6.............................
+DRIFT 45 20 0 0 0
+DRIFT 31 20 0 0 0
+FIELD_MAP 50 300 0 20 0.7582 1 0 0 pql20131112216
+DRIFT 31 20 0 0 0
+set_sync_phase 
+FIELD_MAP 7700 250 -20 20 -0.616 0.616 0 0 cav021r
+;FIELD_MAP 7700 250 -20 20 -0.616 0.616 0 0 cav021r
+DRIFT 31 20 0 0 0
+
+lattice_end  
+drift 21.9 20 0
+drift 21.9 20 0
+drift 21.9 20 0
+drift 21.9 20 0
+drift 21.9 20 0
+drift 21.9 20 0
+drift 21.9 20 0
+drift 21.9 20 0
+drift 21.9 20 0
+drift 21.9 20 0
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;bending HEBT;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+DRIFT 126.9 17.5 0 ;CF35, 3T, for Helium clearning
+DRIFT 35 17.5 0 ;Valve
+DRIFT 50.5 17.5 0 ;CF35 to CF 63
+DRIFT 40 31.5 0 ;ACCT1
+DRIFT 28.628 31.5 0
+DRIFT 50 31.5 0
+
+;;;;;;;;;;thin_steering 0 -0.002 30 0
+;;;;;;;;;;thin_steering 0.002 0 30 0
+
+superpose_map 0 0 0 0 0 0
+;MATCH_FAM_GRAD 5 0
+FIELD_MAP 0090 600 0 31.5 60 0 0 0 Q_H2 ;1 T/m ---- 18.29 A
+superpose_map 354.718 0 0 0 0 0
+;MATCH_FAM_GRAD 5 0
+FIELD_MAP 0090 600 0 31.5 -60 0 0 0 Q_H1 ;1 T/m ---- 18.26 A
+
+DRIFT 104.54 31.5 0
+;;;;slit1
+
+
+DRIFT 395.1 50 34 ;Drift before dipole    986.1+9-600=395.1
+EDGE 15 600 100 0 0 50 0
+;;;;;EDGE 0 600 100 0 0 25 0
+BEND 90 600 0 50 0
+;;;;;EDGE 0 600 100 0 0 50 0
+EDGE 15 600 100 0 0 50 0
+DRIFT 469.605 50 34 ;Drift after dipole
+;;;;DCH/DCV2
+
+;;;;;;;;;;thin_steering 0 -0.002 30 0
+;;;;;;;;;;thin_steering 0.002 0 30 0
+
+superpose_map 0 0 0 0 0 0
+;MATCH_FAM_GRAD 5 0
+FIELD_MAP 0090 600 0 50 95 0 0 0 Q_H4 ;1 T/m ---- 18.23 A
+superpose_map 359.52 0 0 0 0 0
+;MATCH_FAM_GRAD 5 0
+FIELD_MAP 0090 600 0 50 -10 0 0 0 Q_H3 ;1 T/m ---- 18.5 A
+DRIFT 26.185 50 0
+;;;BMP3
+
+DRIFT 459.073 50 0
+;;;;slit 4
+
+set_size 1 5 4
+DRIFT 1e-008 50 0
+
+DRIFT 232.1 50 0
+;;;;FC
+
+set_size_max 1 1 15 0
+
+;;;;;set_size 1 8 0
+DRIFT 1e-008 50 0
+
+DRIFT 532.507 50 0
+
+superpose_map 0 0 0 0 0 0
+MATCH_FAM_GRAD 5 0
+FIELD_MAP 0090 800 0 50 31.007 0 0 0 Q_H5 ;1 T/m ---- 19.97 A
+superpose_map 426.927 0 0 0 0 0
+MATCH_FAM_GRAD 5 0
+FIELD_MAP 0090 800 0 50 -29.525  0 0 0 Q_H6 ;1 T/m ---- 19.94 A
+DRIFT 114.023 50 0 ;Drift
+
+DRIFT 180 50 0 ;shielding layer
+DRIFT 180 50 0 ;shielding layer
+DRIFT 180 50 0 ;shielding layer
+DRIFT 180 50 0 ;shielding layer
+DRIFT 180 50 0 ;shielding layer
+DRIFT 180 50 0 ;shielding layer
+DRIFT 180 50 0 ;shielding layer
+DRIFT 180 50 0 ;shielding layer
+DRIFT 180 50 0 ;shielding layer
+DRIFT 180 50 0 ;shielding layer
+;;;;Dump
+
+SET_SIZE 1 15 15
+DRIFT 1e-008 50 0
+end
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;straight to dump;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+DRIFT 126.9 17.5 0 ;CF35, 3T, for Helium clearning
+DRIFT 35 17.5 0 ;Valve
+DRIFT 50.5 17.5 0 ;CF35 to CF 63
+DRIFT 40 31.5 0 ;ACCT1
+DRIFT 28.628 31.5 0
+DRIFT 50 31.5 0
+
+;;;;;;;;;;thin_steering 0 -0.002 30 0
+;;;;;;;;;;thin_steering 0.002 0 30 0
+
+superpose_map 0 0 0 0 0 0
+;MATCH_FAM_GRAD 5 0
+FIELD_MAP 0090 600 0 31.5 70  0 0 0 Q_H2 ;1 T/m ---- 18.29 A
+superpose_map 354.718 0 0 0 0 0
+;MATCH_FAM_GRAD 5 0
+FIELD_MAP 0090 600 0 31.5 -60 0 0 0 Q_H1 ;1 T/m ---- 18.26 A
+
+DRIFT 104.54 31.5 0
+;;;;slit1
+
+
+DRIFT 136.4 50 0 ;slit1 to BPM2 center
+DRIFT 136.4 50 0 ;slit1 to BPM2 center
+DRIFT 136.4 50 0 ;slit1 to BPM2 center
+DRIFT 136.4 50 0 ;slit1 to BPM2 center
+DRIFT 136.4 50 0 ;slit1 to BPM2 center
+DRIFT 136.4 50 0 ;slit1 to BPM2 center
+DRIFT 136.4 50 0 ;slit1 to BPM2 center
+DRIFT 136.4 50 0 ;slit1 to BPM2 center
+DRIFT 136.4 50 0 ;slit1 to BPM2 center
+DRIFT 136.4 50 0 ;slit1 to BPM2 center
+;;;;;;BPM2
+
+DRIFT 196.82 50 0 ;BPM2 center to slit2
+;;;;;;slit2
+
+DRIFT 82 50 0 ;slit2 to FC begin
+
+;;;;;;;;;set_size 1 22.5 25
+set_size 1 13 13
+DRIFT 1e-8 50 0 ;Fixed FC1 for DC current measurement
+end
+;;;;;;;;;;;;;;;;;;;;;;;;;;straight to dump;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
