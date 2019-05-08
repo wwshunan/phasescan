@@ -114,6 +114,7 @@ class FitThread(CAThread):
         wx.CallAfter(self.master.display.write_line, '{0}\nPhase: {1:.1f}\nEnergy: {2:.3f}\nEpeak: {3:.2f}\n'.format(self.cavity_name, rfPhase, self.Win, amp))
         wx.CallAfter(self.master.updateGraph, self.master.scan_line, self.x, self.y)
         wx.CallAfter(self.master.updateGraph, self.master.fit_line, x_plot, y_plot)
+        wx.CallAfter(self.master.update_next_cav_energy, self.Win)
         with open('fit-results.txt', 'a') as f:
             f.write('{0}\t{1}\t{2}\t{3}\n'.format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), self.Win, abs(amp), rfPhase))
         #create_context()
@@ -167,10 +168,15 @@ class WorkThread(CAThread):
             if self.pause:
                 self.timeToPause.wait()
 
+            last_step = False
             while True:
-                read_values = [PV(x).get() for x in cavity_ready]
-                all_ready = all(x > 0.5 for x in read_values)
+                read_values = [PV(r).get() for r in cavity_ready]
+                all_ready = all(r > 0.5 for r in read_values)
+                if not all_ready:
+                    last_step = True
                 if all_ready:
+                    if last_step:
+                        start_phase -= self.phase_step
                     break
                 time.sleep(1)
 
@@ -199,6 +205,7 @@ class WorkThread(CAThread):
                 bpm_phases.append(bpm_phase)
                 self.timeToQuit.wait(self.delay_read)
             
+            '''
             while True:
                 rms = np.std(bpm_phases)
                 average = np.mean(bpm_phases)
@@ -209,14 +216,16 @@ class WorkThread(CAThread):
                 max_abs_err = max(abs_errs)
                 max_err_index = abs_errs.index(max_abs_err)
                 bpm_phases.pop(max_err_index)
-            
+            '''
+            average = np.mean(bpm_phases) 
+            rms_err = np.std(bpm_phases)
             f.write('%s\t' % start_phase)
             f.write('%s\t' % average)
-            f.write('%s\n' % rms)
+            f.write('%s\n' % rms_err)
 
             x.append(start_phase)
             y.append(average)
-            std_errors.append(rms)
+            std_errors.append(rms_err)
             wx.CallAfter(self.window.updateGraph, self.window.scan_line, x, y)
             start_phase += self.phase_step
 
@@ -229,8 +238,23 @@ class WorkThread(CAThread):
         self.window.y = y
         self.window.errors = errors
 
-    #def handle_error(self, index):
-    #    wx.CallAfter(self.window.handle_error, index)
+    def smooth_data(self, xdata, ydata, errors):
+        xdata, ydata, errors = np.array(xdata), np.array(ydata), np.array(errors)
+        avg_errors = np.average(errors)
+        reserve_limit = 3 * avg_errors
+        xdata, ydata = xdata[errors <= reserve_limit], ydata[errors <= reserve_limit]
+        errors = errors[errors <= reserve_limit]
+
+        shift_min, shift_max = -2, 2
+        for i in range(len(ydata)-1):
+            diffs = []
+
+            for j in range(shift_min, shift_max+1): 
+                diffs.append(abs(ydata[i+1] - ydata[i] + j*360))
+            min_idx = np.argmin(diffs)
+            ydata[i+1] += (shift_min + min_idx) * 360
+        
+        return xdata, ydata, errors
 
     def run(self):
         #create_context()
@@ -241,10 +265,12 @@ class WorkThread(CAThread):
         cavity_name = self.window.cavityList[self.cavity_id]
         bpm_pv_name = self.window.bpm_pv[self.cavity_id]
         cavity_ready = [self.window.cavity_ready[i] for i in range(self.cavity_id+1)]
-        x, y, std_errors = self.scan(cavity_name, cavity_pv_set, cavity_pv_readback, bpm_pv_name, cavity_read)
+        x, y, std_errors = self.scan(cavity_name, cavity_pv_set, cavity_pv_readback, bpm_pv_name, cavity_ready)
         self.data_save(x, y, std_errors)
+        xdata_proc, ydata_proc, errors_proc = self.smooth_data(x, y, std_errors)
 
         wx.CallAfter(self.window.reset_buttons)
+        wx.CallAfter(self.window.updateGraph, self.window.scan_line, xdata_proc, ydata_proc)
         #destroy_context()
 
 class CanvasPanel(wx.Panel):
@@ -535,6 +561,11 @@ class MyFrame(wx.Frame):
 
     def __init__(self):
         wx.Frame.__init__(self, None, -1, "PhaseScan")
+
+        self.prev_energy = 0
+        self.cnt_energy = 0
+        self.next_energy = 0
+
         self.panel = wx.Panel(self, -1)
         self.pltPanel = CanvasPanel(self) 
 
@@ -578,7 +609,7 @@ class MyFrame(wx.Frame):
         self.slider = wx.Slider(self.panel, -1, 0, -178, 180, style=wx.SL_HORIZONTAL)
 
         self.stepLabel = wx.StaticText(self.panel, -1, 'SCAN with step:')
-        self.step = wx.TextCtrl(self.panel, -1, '20', size=(50, -1))
+        self.step = wx.TextCtrl(self.panel, -1, '15', size=(50, -1))
         #self.record_label_pre = wx.StaticText(self.panel, -1, 'Fetch data every')
         #self.record_label_suf = wx.StaticText(self.panel, -1, 'steps')
         self.delayLabel = wx.StaticText(self.panel, -1, 'time delay after setting [sec]:')
@@ -602,10 +633,24 @@ class MyFrame(wx.Frame):
         self.bpm_button = wx.Button(self.panel, -1, 'Get')
         self.Bind(wx.EVT_BUTTON, self.OnGetBpmPhase, self.bpm_button)
 
+
         bpmPhaseSizer = wx.BoxSizer(wx.HORIZONTAL)
         bpmPhaseSizer.Add(self.bpm_phase_label, 0, wx.ALIGN_CENTRE | wx.ALL, 2)
         bpmPhaseSizer.Add(self.bpm_phase, 1, wx.ALIGN_CENTRE | wx.ALL, 2)
         bpmPhaseSizer.Add(self.bpm_button, 0, wx.ALL, 2)
+
+        self.cav_select_label = wx.StaticText(self.panel, -1, 'Choose Cavity')
+        self.prev_btn = wx.Button(self.panel, -1, 'prev')
+        self.next_btn = wx.Button(self.panel, -1, 'next')
+        self.Bind(wx.EVT_BUTTON, self.OnClickPrevNext, self.prev_btn)
+        self.Bind(wx.EVT_BUTTON, self.OnClickPrevNext, self.next_btn)
+
+        cav_select_sizer = wx.BoxSizer(wx.VERTICAL)
+        cav_select_sizer.Add(self.cav_select_label, 0)
+        prev_cnt_next_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        prev_cnt_next_sizer.Add(self.prev_btn, 1,  wx.ALL, 2) 
+        prev_cnt_next_sizer.Add(self.next_btn, 1,  wx.ALL, 2) 
+        cav_select_sizer.Add(prev_cnt_next_sizer, 0, wx.EXPAND)
  
         self.startButton = wx.Button(self.panel, -1, "start")
         self.Bind(wx.EVT_BUTTON, self.OnStart, self.startButton)
@@ -682,9 +727,10 @@ class MyFrame(wx.Frame):
         sizer.Add(delaySizer, 0, wx.ALL, 5)
         sizer.Add(self.averageRadio, 0, wx.EXPAND, wx.ALL, 5)
         sizer.Add(avgSizer, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
-        sizer.Add(setPhaseSizer, 0, wx.EXPAND, wx.ALL, 5)
-        sizer.Add(rbPhaseSizer, 0, wx.EXPAND, wx.ALL, 5)
-        sizer.Add(bpmPhaseSizer, 0, wx.EXPAND, wx.ALL, 5)
+        sizer.Add(setPhaseSizer, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(rbPhaseSizer, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(bpmPhaseSizer, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(cav_select_sizer, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(btSizer, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
 
         self.display = Display(self.panel)
@@ -730,6 +776,21 @@ class MyFrame(wx.Frame):
         phase_get_pv = PV(rb_phase_pv)
         self.rbPhase.SetLabel('{0:.2f}'.format(phase_get_pv.get()))
         #destroy_context()   
+
+    def OnClickPrevNext(self, event):
+        button = event.GetEventObject()
+        cavity_idx = self.cavityList.index(self.cavity.GetValue())
+        if button.GetLabel() == 'next':
+            self.prev_energy = self.cnt_energy
+            self.cnt_energy = self.next_energy
+            cavity_idx += 1
+        else:
+            self.next_energy = self.cnt_energy 
+            self.cnt_energy = self.prev_energy
+            cavity_idx -= 1
+
+        self.injectEnergy.SetValue('{0:.4f}'.format(self.cnt_energy))
+        self.cavity.SetValue(self.cavityList[cavity_idx])
 
     def OnGetBpmPhase(self, event):
         index = self.cavityList.index(self.cavity.GetValue())
@@ -867,13 +928,24 @@ class MyFrame(wx.Frame):
             self.read_fit(filename)
         dlg.Destroy()
 
+    def set_focus(self):
+        if self.cavity.GetValue().startswith(('cm4', 'bun')):
+            self.focus.SetSelection(1)
+        else:
+            self.focus.SetSelection(0)
+
     def get_ready(self):
+        self.set_focus()
         self.data_changed = False
         self.startButton.Disable()
         self.acquire_control_values()
-        self.data_list_init()
+        self.cnt_energy = float(self.injectEnergy.GetValue())
+        self.curve_init()
 
-    def data_list_init(self):
+    def update_next_cav_energy(self, energy):
+        self.next_energy = energy
+
+    def curve_init(self):
         self.x = []
         self.y = []
         self.errors = []
