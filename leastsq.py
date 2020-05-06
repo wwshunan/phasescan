@@ -1,125 +1,136 @@
 #!/usr/bin/env python
 import scipy.constants as C
+from scipy.constants import c
 from scipy import interpolate
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import leastsq
-from pyswarm import pso
 import sys
-
-#fieldName = 'Exyz.txt'
-#scanPhaseFile = 'HWR.txt'
-#injectEnergy = 2.15
-#distance = 0.1
 
 w = 162.5 * 10 ** 6
 
+class ScanDataFit(object):
+    def __init__(self, payload):
+        self.cav_phases_degree = payload['x']
+        self.bpm_phases = payload['y']
+        self.Win = payload['Win']
+        self.distance = payload['distance']
+        self.sync_phase = payload['sync_phase']
+        self.field_name = payload['field_name']
+        self.start_phase = payload['start_phase']
+        self.epk_factor = payload['epk_factor']
+        self.focus_mode = payload['focus_mode']
+        self.freq = payload['freq']
+        self.bpm_harm = payload['bpm_harm']
+        self.bpm_polarity = payload['bpm_polarity']
+        self.m = payload['m']
+        self.q = payload['q']
 
-#distance = 0.446
-#distance = 0.1026
-#mass = 938.272083
+        data = np.loadtxt(self.field_name)
+        z = np.linspace(data[0, 0], data[-1, 0], 1001)
+        f = interpolate.interp1d(data[:, 0], data[:, 3], kind='slinear')
+        self.Ez = f(z)
+        self.dz = (data[-1, 0] - data[0, 0]) / 1000
 
-def calTraceWinPhase(Win, c, phase_in, distance, l, dz, Ez, freq, mass, charge):
-    W = Win
-    t = 0
-    a = 0
-    b = 0
-    for i in range(l - 1):
-        gamma = W / mass + 1
-        beta = (1 - gamma**-2)**0.5
-        phi = phase_in + 2 * C.pi * freq * (t + 0.5 * dz / ( beta * C.c))
-        W = W +  charge * c * 0.5 * (Ez[i] + Ez[i+1]) * np.cos(phi) * dz
-        gammaExit = W / mass + 1
-        betaExit = (1 - gammaExit ** -2) ** 0.5
-        a += charge * c * 0.5 * (Ez[i] + Ez[i+1]) * np.sin(phi) * dz
-        b += charge * c * 0.5 * (Ez[i] + Ez[i+1]) * np.cos(phi) * dz
-        t += dz / (0.5 * (beta + betaExit) * C.c)
-    t += distance / (betaExit * C.c)
-    traceWin_phi = np.arctan(a / b)
-    if (b < 0 and a < 0):
-        traceWin_phi -= C.pi
-    elif (b < 0 and a > 0):
-        traceWin_phi += C.pi
+        if self.focus_mode == 0:
+            self.cav_phases_rad = -np.asarray(self.cav_phases_degree) * np.pi / 180
+        else:
+            self.cav_phases_rad = np.asarray(self.cav_phases_degree) * np.pi / 180
 
-    return traceWin_phi, a, b 
+    def single_bpm_fit(self):
+        p0 = [1, 0, 0]
+        plsq = leastsq(self.residuals, p0)
+        error = np.std(self.residuals(plsq[0]))
 
-def getEntrPhase(twPhase, Win, f, distance, l, dz, Ez, freq, mass, charge):
-    minimum = 0xffffffff
-    best_fit_phase = -C.pi
+        sync_phase = self.sync_phase * np.pi / 180
+        field_factor = plsq[0][0]
+        phase_in = plsq[0][1]
 
-    for phi in np.arange(-C.pi, C.pi, C.pi / 180):
-        err = abs(calTraceWinPhase(Win, f, phi, distance, l, dz, Ez, freq, mass, charge)[0] - twPhase) 
-        if (err < minimum):
-            minimum = err
-            best_fit_phase = phi
+        phase_opt = self.get_entr_phase(sync_phase, field_factor)
 
-    return best_fit_phase
+        computed_bpm_phases = [self.get_bpm_phases(field_factor, phase_in + delta)
+                               for delta in self.cav_phases_rad]
 
-def energyGain(Win, c, phase_in, distance, l, dz, Ez, freq, bpm_harm, bpm_polarity, mass, charge):
-    W = Win
-    t = 0
-    a = 0
-    b = 0
-    for i in range(l - 1):
-        phi = phase_in + 2 * C.pi * freq * t
-        gamma = W / mass + 1
-        beta = (1 - gamma**-2)**0.5
-        W = W +  charge * c * 0.5 * (Ez[i] + Ez[i+1]) * np.cos(phi) * dz
-        gammaExit = W / mass + 1
-        betaExit = (1 - gammaExit ** -2) ** 0.5
-        #a += c * Ez[i] * sin(phi) * dz
-        #b += c * Ez[i] * cos(phi) * dz
-        t += dz / (0.5 * (beta + betaExit) * C.c)
-    t += distance / (betaExit * C.c)
-    #traceWin_phi = actan(a / b)
-    return -(freq * t) * 180 * 2 * bpm_harm * bpm_polarity
+        delta_start = self.cav_phases_rad[0]
+        if self.focus_mode == 0:
+            rf_phase = (phase_in + delta_start - phase_opt) * 180 / np.pi + self.start_phase
+        else:
+            rf_phase = -(phase_in + delta_start - phase_opt) * 180 / np.pi  + self.start_phase
 
-def residuals(p, y, injectEnergy, distance, l, dz, Ez, x, freq, bpm_harm, bpm_polarity, mass, charge):
-    c, phase_in, offset = p
-    err =  np.array(y) - [energyGain(injectEnergy, c, phase_in + e, distance, l, dz, Ez, freq, bpm_harm, bpm_polarity, mass, charge) + offset for e in x]
-    return err
+        print(phase_in, delta_start, phase_opt)
+        exit_energy = self.get_process_params(field_factor, phase_opt)[2]
+        rf_phase = phase_wrapping(rf_phase)
+        return (rf_phase, exit_energy, field_factor * self.epk_factor, error,
+                self.cav_phases_degree, computed_bpm_phases + plsq[0][2])
 
-def getTWPhase(cav_phases, bpm_phases, injectEnergy, distance, twissWinPhase, fieldName, start_phase, slope, EpeakFactor, 
-               focus_mode, freq, bpm_harm, bpm_polarity, mass, charge):
-    data = np.loadtxt(fieldName)
-    z = np.linspace(data[0, 0], data[-1, 0], 1001)
-    f = interpolate.interp1d(data[:, 0], data[:, 3], kind='slinear')
-    Ez = f(z)
-    l = len(z)
-    dz = (data[-1, 0] - data[0, 0]) / 1000
-    #fitStep = step * slope
-    #fitPointNum = len(cav_phases)
+    def get_bpm_phases(self, field_factor, phase_in):
+        W = self.Win
+        t = 0
+        a = 0
+        b = 0
+        for i in range(len(self.Ez) - 1):
+            phi = phase_in + 2 * np.pi * self.freq * t
+            gamma = W / self.m + 1
+            beta = (1 - gamma**-2)**0.5
+            W = W +  self.q * field_factor * 0.5 * (self.Ez[i] + self.Ez[i+1]) * np.cos(phi) * self.dz
+            gammaExit = W / self.m + 1
+            betaExit = (1 - gammaExit ** -2) ** 0.5
+            #a += c * Ez[i] * sin(phi) * dz
+            #b += c * Ez[i] * cos(phi) * dz
+            t += self.dz / (0.5 * (beta + betaExit) * c)
+        t += self.distance / (betaExit * c)
+        #traceWin_phi = actan(a / b)
+        return -(self.freq * t) * 180 * 2 * self.bpm_harm * self.bpm_polarity
 
-    #x = -np.arange(fitPointNum) * fitStep
-    if focus_mode == 0:
-        x = -np.asarray(cav_phases) * np.pi / 180 * slope
-    else:
-        x = np.asarray(cav_phases) * np.pi / 180 * slope
-    p0 = [1, 0, 0]
-    plsq = leastsq(residuals, p0, args=(bpm_phases, injectEnergy, distance, l, dz, Ez, x, freq, bpm_harm, bpm_polarity, mass, charge))
-    error = np.std(residuals(plsq[0], bpm_phases, injectEnergy, distance, l, dz, Ez, x, freq, bpm_harm, bpm_polarity, mass, charge))
+    def residuals(self, p):
+        field_factor, phase_in, offset = p
+        err =  np.array(self.bpm_phases) - [
+            self.get_bpm_phases(field_factor, phase_in + delta) + offset
+            for delta in self.cav_phases_rad]
+        return err
 
-    twissWinPhase = twissWinPhase * C.pi / 180
-    scaleFactor = plsq[0][0]
-    xopt = getEntrPhase(twissWinPhase, injectEnergy, scaleFactor, distance, l, dz, Ez, freq, mass, charge)
+    def get_entr_phase(self, sync_phase, field_factor):
+        minimum = 0xffffffff
+        best_fit_phase = -np.pi
 
-    y = [energyGain(injectEnergy, plsq[0][0], plsq[0][1] + e, distance, l, dz, Ez, freq, bpm_harm, bpm_polarity, mass, charge) for e in x]
+        for phi in np.arange(-np.pi, np.pi, np.pi / 180):
+            err = abs(self.get_process_params(field_factor, phi)[0] - sync_phase)
+            if (err < minimum):
+                minimum = err
+                best_fit_phase = phi
 
-    if focus_mode == 0:
-        rfPhase = (plsq[0][1] + x[0] - xopt) * 180 / C.pi / slope + start_phase
-    else:
-        rfPhase = -(plsq[0][1] + x[0] - xopt) * 180 / C.pi / slope + start_phase
+        return best_fit_phase
 
-    exit_energy = calTraceWinPhase(injectEnergy, plsq[0][0], xopt, distance, l, dz, Ez, freq, mass, charge)[2]
-    rfPhase = phaseWrappingFunction(rfPhase, slope)
-    return rfPhase, exit_energy, plsq[0][0] * EpeakFactor, error, cav_phases, y + plsq[0][2]
+    def get_process_params(self, field_factor, phase_in):
+        W = self.Win
+        t = 0
+        a = 0
+        b = 0
+        for i in range(len(self.Ez) - 1):
+            gamma = W / self.m + 1
+            beta = (1 - gamma**-2)**0.5
+            phi = phase_in + 2 * np.pi * self.freq * (t + 0.5 * self.dz / ( beta * c))
+            W = W +  self.q * field_factor * 0.5 * (self.Ez[i] + self.Ez[i+1]) * np.cos(phi) * self.dz
+            gammaExit = W / self.m + 1
+            betaExit = (1 - gammaExit ** -2) ** 0.5
+            a += self.q * field_factor * 0.5 * (self.Ez[i] + self.Ez[i+1]) * np.sin(phi) * self.dz
+            b += self.q * field_factor * 0.5 * (self.Ez[i] + self.Ez[i+1]) * np.cos(phi) * self.dz
+            t += self.dz / (0.5 * (beta + betaExit) * c)
+        t += self.distance / (betaExit * c)
+        entr_phase = np.arctan(a / b)
+        if (b < 0 and a < 0):
+            entr_phase -= np.pi
+        elif (b < 0 and a > 0):
+            entr_phase += np.pi
 
-def phaseWrappingFunction(inValue, slope):
+        return entr_phase, a, b
+
+def phase_wrapping(inValue):
     outValue = inValue
-    if (abs(inValue) > 180 / slope):
-        outValue += 180 / slope
+    if (abs(inValue) > 180):
+        outValue += 180
         while (outValue < 0):
-            outValue += 360 / slope
-        outValue = outValue % (360 / slope)
-        outValue -= 180 / slope
+            outValue += 360
+        outValue = outValue % 360
+        outValue -= 180
     return outValue
