@@ -12,6 +12,7 @@ prefix = ''
 pvdb = { 
     'LLRF:Buncher1:Loop_State': {},
     'LLRF:Buncher2:Loop_State': {},
+    'LLRF:Buncher1:CAVITY_PHASE': {},
     'SCRF:CAV1:READY': {'value': 1},
     'SCRF:CAV2:READY': {'value': 1},
     'SCRF:CAV3:READY': {'value': 1},
@@ -86,6 +87,7 @@ pvdb = {
     'SCRF:CAV22:EPIC': {},
     'SCRF:CAV23:EPIC': {},
     'Bpm:2-P11': {},
+    'Bpm:3-P11': {},
     'Bpm:5-P11': {},
     'Bpm:6-P11': {},
     'Bpm:7-P11': {},
@@ -112,16 +114,17 @@ pvdb = {
 class myDriver(Driver):
     def __init__(self):
         Driver.__init__(self)
-        self.data = np.loadtxt('4.28/cm4-1.txt', skiprows=1)
+        self.data = np.loadtxt('4.28/buncher1.txt', skiprows=1)
 
     def write(self, reason, value):
         status = True
         # take proper actions
-        if reason.startswith('ADS'):
+        if reason.startswith('LLRF'):
             idx = np.where(abs(self.data[:, 0]-value)<0.1)
             print(self.data[idx, 1])
-            self.setParam('Bpm:21-P11', self.data[idx, 1])
-            self.setParam('Bpm:22-P11', self.data[idx, 2])
+            self.setParam('Bpm:2-P11', self.data[idx, 1])
+            self.setParam('Bpm:3-P11', self.data[idx, 2])
+            self.setParam('LLRF:Buncher1:CAVITY_PHASE', self.data[idx, 0])
         self.setParam(reason, value)
         self.updatePVs()
         return status

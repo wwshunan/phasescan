@@ -1,20 +1,27 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*- 
 
-import wx, time, os, re, threading, matplotlib
+import wx
 import numpy as np
+import time
+import os
+import re
+import threading
 from epics import PV, caput
 from epics.ca import CAThread, create_context, destroy_context, use_initial_context
-from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
+import matplotlib
+from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas  
 from matplotlib.backends.backend_wxagg import NavigationToolbar2WxAgg as NavigationToolbar  
 from matplotlib.widgets import RectangleSelector
 from matplotlib.ticker import MultipleLocator, FuncFormatter
 from matplotlib.figure import Figure
 from matplotlib.path import Path
 import matplotlib.patches as patches
+import scipy.constants as C
 
-from matplotlib import pyplot
-from phasefit import SingleBPMFit, DoubleBPMFit
+import pylab  
+from matplotlib import pyplot 
+from leastsq import getTWPhase
 from pyexcel_ods3 import get_data, save_data
 from collections import OrderedDict
 import wx.richtext as rt
@@ -31,8 +38,7 @@ class MyCustomToolbar(NavigationToolbar):
         NavigationToolbar.__init__(self, plotCanvas)
         self.parent = plotCanvas
         self.xs = []
-        self.first_bpm_selected = []
-        self.second_bpm_selected = []
+        self.ys = []
         self.callback = callback
         self.fit = fit
         self.AddSeparator()
@@ -51,63 +57,73 @@ class MyCustomToolbar(NavigationToolbar):
         self.Bind(wx.EVT_TOOL, self.OnClick)
         self.Bind(wx.EVT_TOOL, self.OnClick)
     
-    def set_selected(self, first_bpm_selected, second_bpm_selected):
-        self.first_bpm_selected = first_bpm_selected
-        self.second_bpm_selected = second_bpm_selected
+    def set_selected(self, xs, ys):
+        self.xs = xs
+        self.ys = ys
 
     def get_selected(self):
-        return self.first_bpm_selected, self.second_bpm_selected
+        return self.xs, self.ys
 
     def OnClick(self, event):
         event_id = event.GetId()
         if event_id == 101: 
-            self.first_bpm_selected += 360
-            self.second_bpm_selected += 360
+            self.ys = [y + 360 for y in self.ys]
             self.callback()
         elif event_id == 102:
-            self.first_bpm_selected -= 360
-            self.second_bpm_selected -= 360
+            self.ys = [y - 360 for y in self.ys]
             self.callback()
         elif event_id == 103:
-            self.first_bpm_selected = []
-            self.second_bpm_selected = []
+            self.xs = []
+            self.ys = []
             self.callback()
         else:
             self.fit()
 
+
 class FitThread(CAThread):
-    def __init__(self, master, payload, log_payload):
+    def __init__(self, master, Win, distance, twPhase, fieldName,
+                 slope, x, y, EpeakFactor, start_phase, focus_mode,
+                 f, bpm_harm, bpm_polarity, rf_phase_pv, mass,
+                 charge, cavity_name, log_excel, cav_rb_amp):
         CAThread.__init__(self)
         self.master = master
-        self.payload = payload
-        self.log_payload = log_payload
+        self.Win = Win
+        self.distance = distance
+        self.twPhase = twPhase
+        self.fieldName = fieldName
+        self.slope = slope
+        self.x = x
+        self.y = y
+        self.start_phase = start_phase
+        self.EpeakFactor = EpeakFactor
+        self.focus_mode = focus_mode
+        self.f = f
+        self.bpm_harm = bpm_harm
+        self.bpm_polarity = bpm_polarity
+        self.rf_phase_pv = rf_phase_pv
+        self.mass = mass
+        self.charge = charge
+        self.cavity_name = cavity_name
+        self.log_excel = log_excel
+        self.cav_amp = cav_rb_amp
 
     def run(self):
-        if self.payload['bpm_mode'] == 'double':
-            fit_obj = DoubleBPMFit(**self.payload)
-        else:
-            fit_obj = SingleBPMFit(**self.payload)
-        rfPhase, energy_gain, amp, e, x_plot, y_plot = fit_obj.bpm_fit()
+        rfPhase, energy_gain, amp, e, x_plot, y_plot = getTWPhase(self.x, self.y, self.Win, self.distance, self.twPhase,
+                                                                  self.fieldName, self.start_phase, self.slope, self.EpeakFactor, 
+                                                                  self.focus_mode, self.f, self.bpm_harm, self.bpm_polarity, 
+                                                                  self.mass, self.charge)
         self.clear_up(rfPhase, energy_gain, amp, x_plot, y_plot)
 
     def clear_up(self, rfPhase, energy_gain, amp, x_plot, y_plot):
-        Win = self.payload['Win']
-        cavity_name = self.log_payload['cavity_name']
-        log_excel = self.log_payload['log_excel']
-        rb_epk = self.log_payload['rb_epk']
-        Win += energy_gain
-        wx.CallAfter(self.master.display.write_line,
-                     '{0}\nPhase: {1:.1f}\nEnergy: {2:.3f}\nEpeak: {3:.2f}\n'.format(
-                         cavity_name, rfPhase, Win, amp))
-        #wx.CallAfter(self.master.updateGraph, self.master.scan_line, self.x, self.y)
+        self.Win += energy_gain
+        wx.CallAfter(self.master.display.write_line, '{0}\nPhase: {1:.1f}\nEnergy: {2:.3f}\nEpeak: {3:.2f}\n'.format(self.cavity_name, rfPhase, self.Win, amp))
+        wx.CallAfter(self.master.updateGraph, self.master.scan_line, self.x, self.y)
         wx.CallAfter(self.master.updateGraph, self.master.fit_line, x_plot, y_plot)
-        wx.CallAfter(self.master.update_next_cav_energy, Win)
-        if log_excel:
-            data = get_data(log_excel)
-            data['Sheet 1'].append([cavity_name, round(float(rfPhase), 1),
-                                    round(abs(float(amp)), 2), rb_epk, '',
-                                    round(float(Win), 4), ''])
-            save_data(log_excel, data)
+        wx.CallAfter(self.master.update_next_cav_energy, self.Win)
+        if self.log_excel:
+            data = get_data(self.log_excel)
+            data['Sheet 1'].append([self.cavity_name, round(float(rfPhase), 1), round(abs(float(amp)), 2), self.cav_amp, '', round(float(self.Win), 4), ''])
+            save_data(self.log_excel, data)
         #create_context()
         #if self.rf_phase_pv is not None:
         #    phase_set_pv = PV(self.rf_phase_pv)
@@ -137,7 +153,7 @@ class WorkThread(CAThread):
         y = []
         std_errors = []
        
-        f = open('{}.{}'.format(cavity_name, 'txt'), 'w')
+        f = open('%s.%s' % (cavity_name, 'txt'), 'w')
         f.write('{0}\n'.format('\t'.join(e for e in bpm_pv_name)))
         wx.CallAfter(self.window.slider.SetRange, 0, self.stop_phase - self.start_phase)
         self.cavity_pv = PV(cavity_pv_set)
@@ -147,7 +163,12 @@ class WorkThread(CAThread):
         self.bpm_pv = [PV(bpm) for bpm in bpm_pv_name]
         self.cav_readback = PV(cavity_pv_readback)
 
-        start_phase = self.start_phase
+        #if cavity_name.startswith('cm4'):   #for cm4
+        #    self.start_phase = self.cavity_pv.get() * 360. / 4294967296
+        #    self.stop_phase = self.start_phase + 360
+        #    wx.CallAfter(self.window.slider.SetRange, 0, self.stop_phase - self.start_phase)
+
+        start_phase = self.start_phase    
         
         outloop_break = False
         while ((self.stop_phase - start_phase) * self.phase_step > 0):
@@ -158,10 +179,11 @@ class WorkThread(CAThread):
                     break
                 if self.pause:
                     self.timeToPause.wait()
-                #read_values = [PV(r).get(timeout=3) for r in cavity_ready]
-                read_values = [True for r in cavity_ready]
+                read_values = [PV(r).get(timeout=3) for r in cavity_ready]
+                print(read_values)
                 try:
                     all_ready = all(r > 0.5 for r in read_values)
+
                 except TypeError:
                     all_ready = False
                 if not all_ready:
@@ -173,7 +195,7 @@ class WorkThread(CAThread):
                     break
                 time.sleep(1)
 
-            if outloop_break:
+            if outloop_break: 
                 break
             #if self.pause:
                 #self.timeToPause.wait()
@@ -187,6 +209,11 @@ class WorkThread(CAThread):
                     time.sleep(1)
                     if self.cav_readback.get() and abs(int(self.cav_readback.get()) - int(start_phase)) < 5:
                         break
+            #elif cavity_name.startswith("cm4"):
+            #    for i in range(1):
+            #        self.cavity_pv.put(start_phase * 4294967296 / 360.)
+            #        cavity_pv_2.put(cavity_pv_2.get() - self.phase_step * 4294967296 / 360.)
+            #        time.sleep(2)
             else:
                 for i in range(2):
                     self.cavity_pv.put(start_phase)
@@ -194,26 +221,35 @@ class WorkThread(CAThread):
 
             bpm_phases = []
             for i in range(self.num_read):
-                bpm_once = []
+                bpm_one_time = []
                 for b in self.bpm_pv:
                     bpm_phase = b.get()
-                    bpm_once.append(bpm_phase)
-                bpm_phases.append(bpm_once)
+                    bpm_one_time.append(bpm_phase)
+                bpm_phases.append(bpm_one_time)
                 self.timeToQuit.wait(self.delay_read)
+            
+            '''
+            while True:
+                rms = np.std(bpm_phases)
+                average = np.mean(bpm_phases)
+                if rms < 5:
+                    break
 
-            average = np.average(bpm_phases, axis=0)
+                abs_errs = [abs(e - average) for e in bpm_phases]
+                max_abs_err = max(abs_errs)
+                max_err_index = abs_errs.index(max_abs_err)
+                bpm_phases.pop(max_err_index)
+            '''
+            average = np.mean(bpm_phases, axis=0) 
             rms_err = np.std(bpm_phases, axis=0)
             f.write('%s\t' % start_phase)
             f.write('%s\n' % np.array2string(average)[1:-1])
+            #f.write('%s\n' % rms_err)
 
             x.append(start_phase)
-            y.append(average)
-            std_errors.append(rms_err)
-            wx.CallAfter(self.window.updateGraph,
-                         self.window.first_bpm_line, x, np.asarray(y)[:, 0])
-            if self.window.bpm_mode == 'double':
-                wx.CallAfter(self.window.updateGraph,
-                             self.window.second_bpm_line, x, np.asarray(y)[:, 1])
+            y.append(average[0])
+            std_errors.append(rms_err[0])
+            wx.CallAfter(self.window.updateGraph, self.window.scan_line, x, y)
             start_phase += self.phase_step
 
         f.close()
@@ -225,51 +261,41 @@ class WorkThread(CAThread):
         self.window.y = y
         self.window.errors = errors
 
-    def shift_bpm_phases(self, data):
+    def smooth_data(self, xdata, ydata, errors):
+        xdata, ydata, errors = np.array(xdata), np.array(ydata), np.array(errors)
+        avg_errors = np.average(errors)
+        reserve_limit = 3 * avg_errors
+        xdata, ydata = xdata[errors <= reserve_limit], ydata[errors <= reserve_limit]
+        errors = errors[errors <= reserve_limit]
+
         shift_min, shift_max = -2, 2
-        for i in range(data.shape[0]-1):
+        for i in range(len(ydata)-1):
             diffs = []
 
-            for j in range(shift_min, shift_max+1):
-                diffs.append(abs(data[i+1] - data[i] + j*360))
+            for j in range(shift_min, shift_max+1): 
+                diffs.append(abs(ydata[i+1] - ydata[i] + j*360))
             min_idx = np.argmin(diffs)
-            data[i+1] += (shift_min + min_idx) * 360
-
-    def smooth_data(self, xdata, ydata, errors):
-        xdata, ydata, errors = np.array(xdata), np.asarray(ydata), np.asarray(errors)
-        avg_errors = np.average(errors, axis=0)
-        reserved_limit = 3 * avg_errors
-        reserved_idx = (errors[:, 0] <= reserved_limit[0]) & (errors[:, 1] <= reserved_limit[1])
-        xdata, ydata = xdata[reserved_idx], ydata[reserved_idx]
-        errors = errors[reserved_idx]
-        self.shift_bpm_phases(ydata[:, 0])
-        self.shift_bpm_phases(ydata[:, 1])
+            ydata[i+1] += (shift_min + min_idx) * 360
+        
         return xdata, ydata, errors
 
     def run(self):
-        #create_context()
         use_initial_context()
-        
+
         cavity_pv_set = self.window.cavity_set_phase[self.cavity_id]
         cavity_pv_readback = self.window.cavity_get_phase[self.cavity_id]
         cavity_name = self.window.cavityList[self.cavity_id]
-        bpm_pv_name = self.window.bpm_pv[self.cavity_id]
+        last_bpm_idx = self.cavity_id + 4
+        bpm_pv_name = self.window.bpm_pv[self.cavity_id:last_bpm_idx]
         cavity_ready = [self.window.cavity_ready[i] for i in range(self.cavity_id+1)
                         if i in self.window.monitor_cavities_idxs]
         x, y, std_errors = self.scan(cavity_name, cavity_pv_set, cavity_pv_readback, bpm_pv_name, cavity_ready)
         self.data_save(x, y, std_errors)
         xdata_proc, ydata_proc, errors_proc = self.smooth_data(x, y, std_errors)
 
-        ydata_diff = ydata_proc[:, 1] - ydata_proc[:, 0]
         wx.CallAfter(self.window.reset_buttons)
-        wx.CallAfter(self.window.updateGraph,
-                     self.window.first_bpm_line, xdata_proc, ydata_proc[:, 0])
-        if self.window.bpm_mode == 'double':
-            wx.CallAfter(self.window.updateGraph,
-                         self.window.second_bpm_line, xdata_proc, ydata_proc[:, 1])
-            wx.CallAfter(self.window.updateGraph,
-                         self.window.bpm_diff_line, xdata_proc, ydata_diff)
-        #destroy_context()
+        wx.CallAfter(self.window.updateGraph, self.window.scan_line, xdata_proc, ydata_proc)
+
 
 class ManualText(rt.RichTextCtrl):
     def __init__(self, parent):
@@ -284,7 +310,7 @@ class ManualText(rt.RichTextCtrl):
 class CanvasPanel(wx.Panel):
     def __init__(self, parent):
         wx.Panel.__init__(self, parent, -1)
-        self.parent = parent.GetParent()
+        self.parent = parent
         self.figure = Figure()
         self.axes = self.figure.add_subplot(111)
         self.axes.margins(0.05)
@@ -293,14 +319,12 @@ class CanvasPanel(wx.Panel):
         self.tail = 0
         #self.selected, = self.axes.plot([], [], 'o', ms=12, alpha=0.4,
         #                                color='yellow', visible=False)
-        self.first_bpm_line, = self.axes.plot([], [], 'o-')
-        self.second_bpm_line, = self.axes.plot([], [], 'o-')
-        self.bpm_diff_line, = self.axes.plot([], [], 'o-')
+        self.scan_line, = self.axes.plot([], [], 'o-')
         self.fit_line, = self.axes.plot([], [], marker='o')
         self.selected, = self.axes.plot([], [], 'rs', visible=False)
         #self.multi_selected, = self.axes.plot([], [], 'ro', ms=12, color='red', visible=False)
         self.canvas = FigureCanvas(self, -1, self.figure)
-        self.NavigationToolbar = MyCustomToolbar(self.canvas, self.update, self.parent.phase_fit)
+        self.NavigationToolbar = MyCustomToolbar(self.canvas, self.update, self.parent.button_fit)
 
         self.axes.set_autoscale_on(True)
         
@@ -311,7 +335,7 @@ class CanvasPanel(wx.Panel):
 
         #self.canvas.Bind(wx.EVT_ENTER_WINDOW, self.changeCursor)
         #self.canvas.mpl_connect('button_press_event', self.on_press)
-        self.canvas.mpl_connect('motion_notify_event', self.parent.updateStatusBar)
+        self.canvas.mpl_connect('motion_notify_event', parent.updateStatusBar)
         #self.canvas.mpl_connect('motion_notify_event', self.drawRectangle)
         #self.canvas.mpl_connect('button_release_event', self.on_release)
         #self.canvas.mpl_connect('button_release_event', self.on_release)
@@ -336,50 +360,52 @@ class CanvasPanel(wx.Panel):
         x_min, x_max = min(x1, x2), max(x1, x2)
         y_min, y_max = min(y1, y2), max(y1, y2)
         #parent.handle_point_select(x1, y1, x2, y2)
-        xdata = self.first_bpm_line.get_xdata()
-        first_bpm_phases = self.first_bpm_line.get_ydata()
-        second_bpm_phases = self.second_bpm_line.get_ydata()
-        self.first_bpm_selected_idx = ((xdata > x_min) & (xdata < x_max) &
-                                  (first_bpm_phases > y_min) & (first_bpm_phases < y_max))
-        self.second_bpm_selected_idx = ((xdata > x_min) & (xdata < x_max) &
-                                   (second_bpm_phases > y_min) & (second_bpm_phases < y_max))
+        line = self.scan_line
+        xdata = line.get_xdata()
+        ydata = line.get_ydata()
 
+        for i, (x, y) in enumerate(zip(xdata, ydata)):
+            if (x > x_min) and (x < x_max) and (y > y_min) and (y < y_max):
+                self.selected_indexes.append(i)
+
+        if self.selected_indexes:
+            self.head = self.selected_indexes[0]
+            self.tail = self.selected_indexes[-1]
+        else:
+            self.head = 0
+            self.tail = -1
+        
         self.selected.set_visible(True)
-        selected_xdata = np.hstack([xdata[self.first_bpm_selected_idx],
-                                    xdata[self.second_bpm_selected_idx]])
-        selected_ydata = np.hstack([first_bpm_phases[self.first_bpm_selected_idx],
-                                    second_bpm_phases[self.second_bpm_selected_idx]])
-        self.selected.set_data(selected_xdata, selected_ydata)
-        self.NavigationToolbar.set_selected(first_bpm_phases[self.first_bpm_selected_idx],
-                                            second_bpm_phases[self.second_bpm_selected_idx])
+        self.selected.set_data(xdata[self.head:self.tail+1], ydata[self.head:self.tail+1])
+        self.NavigationToolbar.set_selected(xdata[self.head:self.tail+1], ydata[self.head:self.tail+1])
         self.canvas.draw()
 
     def update(self):
-        selected = self.NavigationToolbar.get_selected()
-        xdata = self.first_bpm_line.get_xdata()
-        first_bpm_phases = self.first_bpm_line.get_ydata()
-        second_bpm_phases = self.second_bpm_line.get_ydata()
-        first_bpm_phases[self.first_bpm_selected_idx] = selected[0]
-        second_bpm_phases[self.second_bpm_selected_idx] = selected[1]
-        self.first_bpm_line.set_data(xdata, first_bpm_phases)
-        self.second_bpm_line.set_data(xdata, second_bpm_phases)
+        xs, ys = self.NavigationToolbar.get_selected()
+        line = self.scan_line
+        xdata = line.get_xdata()
+        ydata = line.get_ydata()
+        if self.selected_indexes and ys:
+            xdata[self.head:self.tail+1] = xs
+            ydata[self.head:self.tail+1] = ys
+        else:
+            xdata = [x for i, x in enumerate(xdata) if i not in self.selected_indexes]
+            ydata = [y for i, y in enumerate(ydata) if i not in self.selected_indexes]
+        line.set_data(xdata, ydata)
         self.selected.set_data([], [])
-        self.first_bpm_selected_idx = []
-        self.second_bpm_selected_idx = []
+        self.selected_indexes = []
         self.autoscale()
 
     def autoscale(self):
         #self.axes.relim()
         #self.axes.autoscale_view()
-        xdata = self.first_bpm_line.get_xdata()
-        first_bpm_phases = self.first_bpm_line.get_ydata()
-        second_bpm_phases = self.second_bpm_line.get_ydata()
-        bpm_phases = np.hstack([first_bpm_phases, second_bpm_phases])
+        xdata = self.scan_line.get_xdata()
+        ydata = self.scan_line.get_ydata()
         if len(xdata) > 1:
             x_min = min(xdata)
             x_max = max(xdata)
-            y_min = min(bpm_phases)
-            y_max = max(bpm_phases)
+            y_min = min(ydata)
+            y_max = max(ydata)
             x_width = x_max - x_min
             y_width = y_max - y_min
             x_min = x_min - 0.1 * x_width
@@ -551,23 +577,19 @@ class MyFrame(wx.Frame):
     #          'Bpm:11-P11', 'Bpm:12-P11', 'Bpm:13-P11', 'Bpm:14-P11', 'Bpm:15-P11', 'Bpm:16-P11',  'Bpm:16-P11', 
     #          'Bpm:17-P11', 'Bpm:18-P11', 'Bpm:19-P11', 'BI:BPM:COLDBPM01:phase:ai', 'BI:BPM:COLDBPM01:phase:ai', 'BI:BPM:COLDBPM02:phase:ai', 'BI:BPM:COLDBPM03:phase:ai',
     #          'BI:BPM:COLDBPM04:phase:ai', 'BI:BPM:COLDBPM05:phase:ai', 'Bpm:25-P11']
-    bpm_pv = [('Bpm:2-P11', 'Bpm:3-P11'), ('Bpm:5-P11', 'Bpm:6-P11')]
-    bpm_pv += [('Bpm:6-P11', 'Bpm:7-P11'), ('Bpm:7-P11', 'Bpm:8-P11'), ('Bpm:8-P11', 'Bpm:9-P11'),
-               ('Bpm:9-P11', 'Bpm:10-P11'), ('Bpm:10-P11', 'Bpm:11-P11'), ('Bpm:11-P11', 'Bpm:12-P11')]
-    bpm_pv += [('Bpm:11-P11', 'Bpm:12-P11'), ('Bpm:12-P11', 'Bpm:13-P11'), ('Bpm:13-P11', 'Bpm:14-P11'),
-               ('Bpm:14-P11', 'Bpm:15-P11'), ('Bpm:15-P11', 'Bpm:16-P11'), ('Bpm:16-P11', 'Bpm:17-P11')]
-    bpm_pv += [('Bpm:16-P11', 'Bpm:17-P11'), ('Bpm:17-P11', 'Bpm:18-P11'), ('Bpm:18-P11', 'Bpm:19-P11'),
-               ('Bpm:19-P11', 'Bpm:20-P11'), ('Bpm:20-P11', 'Bpm:21-P11'), ('Bpm:21-P11', 'Bpm:22-P11')]
-    bpm_pv += [('Bpm:21-P11', 'Bpm:22-P11'), ('Bpm:22-P11', 'Bpm:23-P11'), ('Bpm:23-P11', 'Bpm:24-P11'),
-               ('Bpm:24-P11', 'Bpm:25-P11'), ('Bpm:25-P11', 'Bpm:26-P11')]
+    bpm_pv = ['Bpm:2-P11', 'Bpm:5-P11'] 
+    bpm_pv += ['Bpm:6-P11', 'Bpm:7-P11', 'Bpm:8-P11', 'Bpm:9-P11', 'Bpm:10-P11', 'Bpm:11-P11'] 
+    bpm_pv += ['Bpm:11-P11', 'Bpm:12-P11', 'Bpm:13-P11', 'Bpm:14-P11', 'Bpm:15-P11', 'Bpm:16-P11']  
+    bpm_pv += ['Bpm:16-P11',  'Bpm:17-P11', 'Bpm:18-P11', 'Bpm:19-P11', 'Bpm:20-P11', 'Bpm:21-P11'] 
+    bpm_pv += ['Bpm:21-P11', 'Bpm:22-P11', 'Bpm:23-P11', 'Bpm:24-P11', 'Bpm:25-P11']
 
     #distance_cav_bpm = [0.08134, 0.12984, 0.1026, 0.1026, 0.1026, 0.1026, 0.1026, 1.2426, 0.1026, 0.1026, 0.1026, 0.1026,
     #                    0.1026, 1.3976, 0.1126, 0.1126, 0.1126, 0.1126, 1.3992, 0.795, 0.795, 0.795, 0.795, 1.30655, 0.61855]
     distance_cav_bpm = [0.08134, 0.12984] 
-    distance_cav_bpm += [0.1026, 0.6129, 0.6621, 0.6532, 1.7781, 0.6365]
-    distance_cav_bpm += [0.6365, 0.6363, 0.6769, 0.6375, 1.776, 0.6395]
-    distance_cav_bpm += [0.6395, 0.6395, 0.6438, 0.6419, 1.9357, 0.7856]
-    distance_cav_bpm += [0.7856, 0.7904, 0.7835, 1.5046, 2.052]
+    distance_cav_bpm += [0.1026, 0.1026, 0.1026, 0.1026, 0.1026, 1.2426] 
+    distance_cav_bpm += [0.1026, 0.1026, 0.1026, 0.1026, 0.1026, 1.2426] 
+    distance_cav_bpm += [0.1026, 0.1026, 0.1026, 0.1026, 0.1026, 1.3976] 
+    distance_cav_bpm += [0.1017, 0.1027, 0.1126, 0.1048, 1.3992] 
     #distance_cav_bpm += [0.795, 0.795, 0.795, 0.795, 1.30655, 0.61855]
 
     field_names = ['buncher_field.txt', 'buncher_field.txt'] 
@@ -602,7 +624,7 @@ class MyFrame(wx.Frame):
         self.next_energy = 0
 
         self.panel = wx.Panel(self, -1)
-        self.pltPanel = CanvasPanel(self.panel)
+        self.pltPanel = CanvasPanel(self)
         self.manual = ManualText(self)
 
         #excel file name used to log cavity parameters
@@ -612,7 +634,7 @@ class MyFrame(wx.Frame):
         file_menu = wx.Menu()
         open_item = file_menu.Append(-1, "Open")
         self.Bind(wx.EVT_MENU, self.open, open_item)
-        load_item = file_menu.Append(-1, "Load Lattice")
+        load_item = file_menu.Append(-1, "Load Phase")
         self.Bind(wx.EVT_MENU, self.load, load_item)
         save_item = file_menu.Append(-1, "Save As")
         self.Bind(wx.EVT_MENU, self.save, save_item)
@@ -635,7 +657,9 @@ class MyFrame(wx.Frame):
         menuBar.Append(state_menu, "State")
         self.SetMenuBar(menuBar)
 
-        self.cavityList = ['buncher1', 'buncher2', 'cm1-1', 'cm1-2', 'cm1-3', 'cm1-4', 'cm1-5', 'cm1-6']
+        focus_list = ['buncher', 'cm']
+        self.focus = wx.RadioBox(self.panel, -1, 'focus', wx.DefaultPosition, wx.DefaultSize, focus_list, 2, wx.RA_SPECIFY_COLS)
+        self.cavityList = ['buncher1', 'buncher2', 'cm1-1', 'cm1-2', 'cm1-3', 'cm1-4', 'cm1-5', 'cm1-6'] 
         self.cavityList += ['cm2-1', 'cm2-2', 'cm2-3', 'cm2-4', 'cm2-5', 'cm2-6'] 
         self.cavityList += ['cm3-1', 'cm3-2', 'cm3-3', 'cm3-4', 'cm3-5', 'cm3-6'] 
         self.cavityList += ['cm4-1', 'cm4-2', 'cm4-3', 'cm4-4', 'cm4-5']
@@ -763,6 +787,7 @@ class MyFrame(wx.Frame):
 
         scanBox = wx.StaticBox(self.panel, -1, 'scan')
         sizer = wx.StaticBoxSizer(scanBox, wx.VERTICAL)
+        sizer.Add(self.focus, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(typeSizer, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(injectSizer, 0, wx.EXPAND | wx.ALL, 5)
         sizer.Add(cavSizer, 0, wx.EXPAND | wx.ALL, 5)
@@ -786,28 +811,23 @@ class MyFrame(wx.Frame):
         left_sizer = wx.BoxSizer(wx.VERTICAL)
         left_sizer.Add(sizer, 0, wx.EXPAND)
         left_sizer.Add(displaySizer, 1, wx.EXPAND)
-        #self.panel.SetSizer(left_sizer)
+        self.panel.SetSizer(left_sizer)
 
         right_sizer = wx.BoxSizer(wx.VERTICAL)
         right_sizer.Add(self.pltPanel, 0, wx.EXPAND)
         right_sizer.Add(self.manual, 1, wx.EXPAND)
 
-        #sz = wx.BoxSizer(wx.HORIZONTAL)
-        #sz.Add(self.panel, 0, wx.EXPAND | wx.ALL, 5)
-        #sz.Add(right_sizer, 1, wx.EXPAND | wx.ALL, 5)
-        #self.SetSizerAndFit(sz)
+        sz = wx.BoxSizer(wx.HORIZONTAL)
+        sz.Add(self.panel, 0, wx.EXPAND | wx.ALL, 5)
+        sz.Add(right_sizer, 1, wx.EXPAND | wx.ALL, 5)
+        self.SetSizerAndFit(sz)
 
         self.pauseButton.Disable()
         self.stopButton.Disable()
 
+        self.set_lines()
         self.setPhase.Bind(wx.EVT_TEXT_ENTER, self.setCavPhase)
         self.initial_cavity_monitor()
-
-        root_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        root_sizer.Add(left_sizer, 0, wx.EXPAND | wx.ALL, 5)
-        root_sizer.Add(right_sizer, 1, wx.EXPAND | wx.ALL, 5)
-        self.panel.SetSizerAndFit(root_sizer)
-        self.Fit()
         #self.pltPanel.canvas.mpl_connect('pick_event', self.on_pick)
         #self.pltPanel.canvas.mpl_connect('pick_event', self.on_pick)
         #self.pltPanel.canvas.mpl_connect('button_press_event', self.on_press)
@@ -916,22 +936,20 @@ class MyFrame(wx.Frame):
         self.initial_cavity_monitor()
 
     def on_fit(self, event):
-        self.phase_fit()
+        x = self.scan_line.get_xdata()
+        y = self.scan_line.get_ydata()
+        self.fit(x, y)
 
-    def phase_fit(self):
-        cavity_phases = self.first_bpm_line.get_xdata()
-        first_bpm_phases = self.first_bpm_line.get_ydata()
-        if self.bpm_mode == 'double':
-            second_bpm_phases = self.second_bpm_line.get_ydata()
-            bpm_phases = np.hstack([first_bpm_phases.reshape(-1, 1),
-                                    second_bpm_phases.reshape(-1, 1)])
-        else:
-            bpm_phases = first_bpm_phases
-        self.fit(cavity_phases, bpm_phases)
+    def button_fit(self):
+        x = self.scan_line.get_xdata()
+        y = self.scan_line.get_ydata()
+        self.fit(x, y)
 
-    def fit(self, cavity_phase, bpm_phases):
+    def fit(self, x, y):
         index = self.cavityList.index(self.cavity.GetValue())
-        freq = 162.5e6
+        rf_phase_pv = self.cavity_set_phase[index]
+        f = 162.5e6
+        #f = 162.4699e6
         bpm_harm = 1
         bpm_polarity = 1
         '''
@@ -954,51 +972,31 @@ class MyFrame(wx.Frame):
         else:
             EpeakFactor = 25
         '''
-        cavity_polarity = 0
         if self.cavityList[index].startswith("buncher"):
-            cavity_polarity = 1
-            epk_factor = 600
+            EpeakFactor = 600
         elif self.cavityList[index].startswith("cm4"):
-            epk_factor = 32
+            EpeakFactor = 32
         else:
-            epk_factor = 25
+            EpeakFactor = 25
         Win = float(self.injectEnergy.GetValue())
-        sync_phases = np.genfromtxt('synch-phases/phases.dat', dtype='str')
-        sync_phases = dict(sync_phases)
+        synch_phases = np.genfromtxt('synch-phases/phases.dat', dtype='str')
+        synch_phases = dict(synch_phases)
         distance = self.distance_cav_bpm[index]
-        sync_phase = float(sync_phases[self.cavityList[index]])
-        field_name = self.field_names[index]
-        start_phase = cavity_phase[0]
+        twPhase = float(synch_phases[self.cavityList[index]])
+        fieldName = self.field_names[index]
+        slope = self.slopes[index]
+        focus_mode = self.focus.GetSelection()
+        start_phase = x[0] 
         type_name = self.type.GetValue()
         mass = self.particle_mass_charge[type_name]['mass']
         charge = self.particle_mass_charge[type_name]['charge']  
         cavity_name = self.cavityList[index]
         log_excel = self.log_excel
-        rb_epk = round(PV(self.cavity_amp[index]).get(), 2)
-
-        payload = {
-            'cavity_phase': cavity_phase,
-            'bpm_phases': bpm_phases,
-            'bpm_mode': self.bpm_mode,
-            'Win': Win,
-            'distance': distance,
-            'sync_phase': sync_phase,
-            'field_name': field_name,
-            'start_phase': start_phase,
-            'epk_factor': epk_factor,
-            'cavity_polarity': cavity_polarity,
-            'freq': freq,
-            'bpm_harm': bpm_harm,
-            'bpm_polarity': bpm_polarity,
-            'm': mass,
-            'q': charge
-        }
-        log_payload = {
-            'cavity_name': cavity_name,
-            'log_excel': log_excel,
-            'rb_epk': rb_epk
-        }
-        t = FitThread(self, payload, log_payload)
+        cav_rb_amp = round(PV(self.cavity_amp[index]).get(), 2)
+        
+        t = FitThread(self, Win, distance, twPhase, fieldName, slope, x, y,
+                      EpeakFactor, start_phase, focus_mode, f, bpm_harm, bpm_polarity,
+                      rf_phase_pv, mass, charge, cavity_name, log_excel, cav_rb_amp)
         t.start()
 
     def clear(self, event):
@@ -1012,32 +1010,20 @@ class MyFrame(wx.Frame):
                 f.write('%s\t%s\t%s\n' % e)
             f.close()
 
-    def load_lattice(self, filename):
+    def read_synch_phase(self, filename):
         tracewin_file = open(filename, 'r')
         synch_phase_file = open('synch-phases/phases.dat', 'w')
         tracewin_phases = []
-        phase_count = 0
-        mebt_quads_count = 0
-        sol_count = 0
-        hebt_count = 0
+        i = 0
         for line in tracewin_file:
             if not line.strip() or line.startswith(';'):
                 continue
             line_split = line.split()
-            if len(line_split) > 9:
-                if line_split[9].startswith(('hwr', 'cav', 'buncher')):
-                    if float(line_split[6]) > 1e-6:
-                        cavity_name = self.cavityList[i]
-                        tracewin_phases.append('{0}\t{1}'.format(cavity_name, line_split[3]))
-                    phase_count += 1
-                elif line_split[9].startswith(('quad1', 'quad2')):
-                    magnets = []
-                    set_mebt_magnets(magnets)
-                elif line_split[9].startswith('sol'):
-                    set_solenoids()
-
+            if len(line_split) > 9 and line_split[9].startswith(('hwr', 'cav', 'buncher')):
+                if float(line_split[6]) > 1e-6:
+                    cavity_name = self.cavityList[i]
+                    tracewin_phases.append('{0}\t{1}'.format(cavity_name, line_split[3]))
                 i += 1
-
         tracewin_file.close()
         for phase in tracewin_phases:
             synch_phase_file.write('{0}\n'.format(phase))
@@ -1051,17 +1037,24 @@ class MyFrame(wx.Frame):
     def read_fit(self, filename):
         if filename:
             self.clear_graph()
-            data = np.loadtxt(filename, skiprows=1)
-            cavity_phase = data[:, 0]
-            bpm_phases = data[:, 1:3]
-            self.fit(cavity_phase, bpm_phases)
+            f = open(filename, 'r')
+            data = f.readlines()
+            f.close()
+            x = []
+            y = []
+            for line in data:
+                line_data = line.strip().split()
+                x.append(float(line_data[0]))
+                y.append(float(line_data[1]))
+   
+            self.fit(x, y)
             #self.updateGraph(self.fit_line, x_plot, y_plot)
 
     def load(self, event):
-        dlg = wx.FileDialog(self, "Open tracewin lattice...", os.getcwd(), style=wx.FD_OPEN, wildcard=self.wildcard)
+        dlg = wx.FileDialog(self, "Open synchronous phase file...", os.getcwd(), style=wx.FD_OPEN, wildcard=self.wildcard)
         if dlg.ShowModal() == wx.ID_OK:
             filename = dlg.GetPath()
-            self.load_lattice(filename)
+            self.read_synch_phase(filename)
         dlg.Destroy()
 
     def open(self, event):
@@ -1071,20 +1064,19 @@ class MyFrame(wx.Frame):
             self.read_fit(filename)
         dlg.Destroy()
 
-    def set_bpm_mode(self):
-        cavity_name = self.cavity.GetValue()
-        self.bpm_mode = 'double'
-        if cavity_name in ['buncher1', 'buncher2', 'cm1-1']:
-            self.bpm_mode = 'single'
+    def set_focus(self):
+        if self.cavity.GetValue().startswith(('bun',)):
+            self.focus.SetSelection(1)
+        else:
+            self.focus.SetSelection(0)
 
     def get_ready(self):
-        self.set_lines()
+        self.set_focus()
         self.data_changed = False
         self.startButton.Disable()
         self.acquire_control_values()
         self.cnt_energy = float(self.injectEnergy.GetValue())
         self.curve_init()
-        self.set_bpm_mode()
 
     def update_next_cav_energy(self, energy):
         self.next_energy = energy
@@ -1119,11 +1111,11 @@ class MyFrame(wx.Frame):
         self.delay_before_scan = float(self.delay.GetValue())
         self.delay_read = float(self.avg_delay.GetValue())
         self.num_read = int(self.avg_num.GetValue())
-
+        self.focus_value = self.focus.GetSelection()
+    
     def set_lines(self):
-        self.first_bpm_line = self.pltPanel.first_bpm_line
-        self.second_bpm_line = self.pltPanel.second_bpm_line
-        self.bpm_diff_line = self.pltPanel.bpm_diff_line
+        #self.scan_line, = self.pltPanel.axes.plot([], [], marker='o', picker=5)
+        self.scan_line = self.pltPanel.scan_line
         self.fit_line = self.pltPanel.fit_line
         self.selected = self.pltPanel.selected
 
@@ -1182,11 +1174,9 @@ class MyFrame(wx.Frame):
             self.statusBar.SetStatusText(('x= ' + str(x) + ' y=' + str(y)), 0)
 
     def clear_graph(self):
-        self.updateGraph(self.first_bpm_line, [], [])
-        self.updateGraph(self.second_bpm_line, [], [])
-        self.updateGraph(self.bpm_diff_line, [], [])
-        self.updateGraph(self.selected, [], [])
+        self.updateGraph(self.scan_line, [], [])
         self.updateGraph(self.fit_line, [], [])
+        self.updateGraph(self.selected, [], [])
 
 if __name__ == '__main__':
     app = wx.App()
