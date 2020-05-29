@@ -356,13 +356,23 @@ class CanvasPanel(wx.Panel):
 
     def update(self):
         selected = self.NavigationToolbar.get_selected()
-        xdata = self.first_bpm_line.get_xdata()
         first_bpm_phases = self.first_bpm_line.get_ydata()
         second_bpm_phases = self.second_bpm_line.get_ydata()
-        first_bpm_phases[self.first_bpm_selected_idx] = selected[0]
-        second_bpm_phases[self.second_bpm_selected_idx] = selected[1]
+        xdata = self.first_bpm_line.get_xdata()
+        if (len(selected[0]) > 0) or (len(selected[1]) > 0):
+            first_bpm_phases[self.first_bpm_selected_idx] = selected[0]
+            second_bpm_phases[self.second_bpm_selected_idx] = selected[1]
+        else:
+            print(self.first_bpm_selected_idx.shape)
+            print(self.second_bpm_selected_idx.shape)
+            both_selected_idx = self.first_bpm_selected_idx | self.second_bpm_selected_idx
+            print(both_selected_idx.shape)
+            first_bpm_phases = first_bpm_phases[~both_selected_idx]
+            second_bpm_phases = second_bpm_phases[~both_selected_idx]
+            xdata = xdata[~both_selected_idx]
         self.first_bpm_line.set_data(xdata, first_bpm_phases)
         self.second_bpm_line.set_data(xdata, second_bpm_phases)
+        self.bpm_diff_line.set_data(xdata, second_bpm_phases-first_bpm_phases)
         self.selected.set_data([], [])
         self.first_bpm_selected_idx = []
         self.second_bpm_selected_idx = []
@@ -374,7 +384,10 @@ class CanvasPanel(wx.Panel):
         xdata = self.first_bpm_line.get_xdata()
         first_bpm_phases = self.first_bpm_line.get_ydata()
         second_bpm_phases = self.second_bpm_line.get_ydata()
-        bpm_phases = np.hstack([first_bpm_phases, second_bpm_phases])
+        diff_bpm_phases = self.bpm_diff_line.get_ydata()
+        bpm_phases = np.hstack([first_bpm_phases,
+                                second_bpm_phases,
+                                diff_bpm_phases])
         if len(xdata) > 1:
             x_min = min(xdata)
             x_max = max(xdata)
@@ -567,7 +580,7 @@ class MyFrame(wx.Frame):
     distance_cav_bpm += [0.1026, 0.6129, 0.6621, 0.6532, 1.7781, 0.6365]
     distance_cav_bpm += [0.6365, 0.6363, 0.6769, 0.6375, 1.776, 0.6395]
     distance_cav_bpm += [0.6395, 0.6395, 0.6438, 0.6419, 1.9357, 0.7856]
-    distance_cav_bpm += [0.7856, 0.7904, 0.7835, 1.5046, 2.052]
+    distance_cav_bpm += [0.7856, 0.7904, 0.7835, 1.5046, 1.86044]
     #distance_cav_bpm += [0.795, 0.795, 0.795, 0.795, 1.30655, 0.61855]
 
     field_names = ['buncher_field.txt', 'buncher_field.txt'] 
@@ -612,8 +625,6 @@ class MyFrame(wx.Frame):
         file_menu = wx.Menu()
         open_item = file_menu.Append(-1, "Open")
         self.Bind(wx.EVT_MENU, self.open, open_item)
-        load_item = file_menu.Append(-1, "Load Lattice")
-        self.Bind(wx.EVT_MENU, self.load, load_item)
         save_item = file_menu.Append(-1, "Save As")
         self.Bind(wx.EVT_MENU, self.save, save_item)
         new_log_item = file_menu.Append(-1, "New Excel")
@@ -851,12 +862,12 @@ class MyFrame(wx.Frame):
         index = self.cavityList.index(self.cavity.GetValue())
         bpm_phases = []
         read_num = 5
-        bpm_pv = PV(self.bpm_pv[index])
+        bpm_pv = PV(self.bpm_pv[index][0])
         for i in range(read_num):
             bpm_phases.append(bpm_pv.get())
             time.sleep(1)
         avg_bpm_phase = round(float(np.average(bpm_phases)), 1)
-        self.bpm_phase_label.SetLabel('BPM {0}'.format(re.findall('\d+', self.bpm_pv[index])[0]))
+        self.bpm_phase_label.SetLabel('BPM {0}'.format(re.findall('\d+', self.bpm_pv[index][0])[0]))
         self.bpm_phase.SetLabel('{0:.1f}'.format(avg_bpm_phase))
                 
         if self.log_excel:
@@ -864,7 +875,7 @@ class MyFrame(wx.Frame):
             cavity_name = self.cavity.GetValue()
             for row in data['Sheet 1']:
                 if row[0] == cavity_name:
-                    matchObj = re.match(r'.*:(\d*)-.*', self.bpm_pv[index])
+                    matchObj = re.match(r'.*:(\d*)-.*', self.bpm_pv[index][0])
                     bpm_idx = matchObj.group(1)
                     if len(row) == 6:
                         row.append('BPM{}/{}'.format(bpm_idx, avg_bpm_phase))
@@ -1012,42 +1023,6 @@ class MyFrame(wx.Frame):
                 f.write('%s\t%s\t%s\n' % e)
             f.close()
 
-    def load_lattice(self, filename):
-        tracewin_file = open(filename, 'r')
-        synch_phase_file = open('synch-phases/phases.dat', 'w')
-        tracewin_phases = []
-        phase_count = 0
-        mebt_quads_count = 0
-        sol_count = 0
-        hebt_count = 0
-        for line in tracewin_file:
-            if not line.strip() or line.startswith(';'):
-                continue
-            line_split = line.split()
-            if len(line_split) > 9:
-                if line_split[9].startswith(('hwr', 'cav', 'buncher')):
-                    if float(line_split[6]) > 1e-6:
-                        cavity_name = self.cavityList[i]
-                        tracewin_phases.append('{0}\t{1}'.format(cavity_name, line_split[3]))
-                    phase_count += 1
-                elif line_split[9].startswith(('quad1', 'quad2')):
-                    magnets = []
-                    set_mebt_magnets(magnets)
-                elif line_split[9].startswith('sol'):
-                    set_solenoids()
-
-                i += 1
-
-        tracewin_file.close()
-        for phase in tracewin_phases:
-            synch_phase_file.write('{0}\n'.format(phase))
-        synch_phase_file.close()
-
-        if not tracewin_phases:
-            self.statusBar.SetStatusText(('Synchronous phases loaded error'), 0)
-        else:
-            self.statusBar.SetStatusText(('Synchronous phases loaded successfully'), 0)
-
     def read_fit(self, filename):
         if filename:
             self.clear_graph()
@@ -1056,13 +1031,6 @@ class MyFrame(wx.Frame):
             bpm_phases = data[:, 1:3]
             self.fit(cavity_phase, bpm_phases)
             #self.updateGraph(self.fit_line, x_plot, y_plot)
-
-    def load(self, event):
-        dlg = wx.FileDialog(self, "Open tracewin lattice...", os.getcwd(), style=wx.FD_OPEN, wildcard=self.wildcard)
-        if dlg.ShowModal() == wx.ID_OK:
-            filename = dlg.GetPath()
-            self.load_lattice(filename)
-        dlg.Destroy()
 
     def open(self, event):
         dlg = wx.FileDialog(self, "Open phase file...", os.getcwd(), style=wx.FD_OPEN, wildcard=self.wildcard)
@@ -1085,6 +1053,7 @@ class MyFrame(wx.Frame):
         self.cnt_energy = float(self.injectEnergy.GetValue())
         self.curve_init()
         self.set_bpm_mode()
+        self.clear_graph()
 
     def update_next_cav_energy(self, energy):
         self.next_energy = energy
